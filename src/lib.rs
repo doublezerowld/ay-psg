@@ -77,7 +77,7 @@ pub enum Register {
     /// **Example:**
     /// ```no_run
     /// // Enables only channel A, with IOA and IOB functioning as outputs.
-    /// chip.write_register(
+    /// chip.command(
     ///     Registers::IoPortMixerSettings,
     ///     0b11111110
     /// );
@@ -120,6 +120,7 @@ pub enum Register {
     DataIoB,
 }
 
+/// Helper trait implemented for u8 and crate::Register to make writing to registers easier
 pub trait ValidRegister {
     fn address(self) -> u8;
 }
@@ -136,6 +137,7 @@ impl ValidRegister for Register {
     }
 }
 
+/// A command contains a value to be written to a specific register of the YM2149.
 #[allow(unused)]
 #[derive(Debug)]
 pub struct Command {
@@ -143,48 +145,39 @@ pub struct Command {
     pub value: u8,
 }
 
-#[allow(unused)]
 impl Command {
     fn new(register: u8, value: u8) -> Self {
         Self { register, value }
     }
 
     fn as_array(&self) -> [u8; 2] {
-        [self.register.address(), self.value]
+        [self.register, self.value]
     }
 }
 
-/// Helper trait that lets you configure any sort of output bus.
-/// It abstracts writing 8-bit values to various bus implementations.
-///
+/// Helper trait that lets you implement an "output" for the commands that the driver generates.
+/// 
 /// Example:
 /// ```no_run
-/// use embedded_hal::digital::PinState::{ High, Low };
-/// use rp2040_hal::gpio::{ DynPinId, FunctionSio, Pin, PullDown, SioOutput};
-///
-/// impl OutputBus for DataBus<Pin<DynPinId, FunctionSio<SioOutput>, PullDown>> {
-///     fn write_u8(&mut self, data: u8) {
-///         for bit in 0..8 {
-///             let state = if (data >> bit) & 1 == 1 {
-///                 High
-///             } else {
-///                 Low
-///             };
-///             let _ = self.pins[bit].set_state(state);
-///         }
-///     }
+/// struct DebugWriter {};
+/// impl CommandOutput for DebugWriter {
+///     fn execute(&mut self, command: Command) {
+///         println!("Writing 0b{:08b} to register 0b{:08b}.", command.register, command.value);
+///     };
 /// }
 /// ```
 pub trait CommandOutput {
     fn execute(&mut self, command: Command);
 }
 
+/// One of the two modes of the I/O ports.
 #[repr(u8)]
 pub enum IoMode {
     Input = 0,
     Output = 1,
 }
 
+/// IO Port & Mixer settings
 pub struct IoPortMixerSettings {
     pub gpio_port_a_mode: IoMode,
     pub gpio_port_b_mode: IoMode,
@@ -274,38 +267,6 @@ pub enum IoPort {
 // =========================================================
 
 /// A YM2149 chip struct.
-/// Below is the simplest example code you need to build one:
-/// ```no_run
-/// // Frequency (in Hz, u32) of the clock the chip is connected to (Pin 22 on the YM2149)
-/// let master_clock_freq: u32 = 2_000_000;
-///
-/// // DynPins for the 8-bit data bus (LSB, pin D0 to MSB, pin D7)
-/// let data_pins = [
-///     pins.gpio1.into_push_pull_output().into_dyn_pin(),
-///     pins.gpio2.into_push_pull_output().into_dyn_pin(),
-///     pins.gpio3.into_push_pull_output().into_dyn_pin(),
-///     pins.gpio4.into_push_pull_output().into_dyn_pin(),
-///     pins.gpio5.into_push_pull_output().into_dyn_pin(),
-///     pins.gpio6.into_push_pull_output().into_dyn_pin(),
-///     pins.gpio7.into_push_pull_output().into_dyn_pin(),
-///     pins.gpio8.into_push_pull_output().into_dyn_pin()
-/// ];
-/// // Initialize a DataBus
-/// let mut data_bus = DataBus::new(data_pins);
-/// data_bus.write_u8(0); // Write 0b0000_0000 as a safety measure
-///
-/// // Bus control decoder pins (BC2 is redundant - connect it to VCC)
-/// let bc1 = pins.gpio9.into_push_pull_output();
-/// let bdir = pins.gpio10.into_push_pull_output();
-///
-/// // Build the chip by passing:
-/// let mut chip = YM2149::new(
-///     data_bus,           // - A variable of type that implements the `OutputBus` trait
-///     master_clock_freq,  // - The frequency of the master clock
-///     bc1,                // - GPIO pin connected to BC1
-///     bdir                // - GPIO pin connected to BDIR
-/// );
-/// ```
 pub struct YM2149<C>
 where
     C: CommandOutput,
@@ -326,20 +287,7 @@ where
         }
     }
 
-    /// Write to one of the chip's 16 registers.
-    /// You can pass either a [YM2149::Register](#Register) or u8 for this purpose.
-    ///
-    /// The `register` parameter should be in the range of `0..15`.
-    /// In case it isn't, the compiler will warn you of this and
-    /// its' value will be clamped by the following line:
-    /// ```no_run
-    /// let r: u8 = register.into().clamp(0, 15);
-    /// ```
-    /// Example:
-    /// ```no_run
-    /// // Configure the mixer according to the datasheet
-    /// chip.write_register(Register::IoPortMixerSettings, 0b11111110);
-    /// ```
+    /// Send a [Command](#Command).
     pub fn command<R: ValidRegister + Copy>(&mut self, register: R, value: u8) {
         self.command_output
             .execute(Command::new(register.address(), value));
