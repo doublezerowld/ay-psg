@@ -30,7 +30,7 @@ impl From<BaseNote> for f32 {
     }
 }
 
-/// An accidental. It corresponds to a i8 value in quarter tones.
+/// An accidental, represented by an i8 value that corresponds to the offset in quarter tones.
 #[derive(Debug, Clone, Copy)]
 #[repr(i8)]
 pub enum Accidental {
@@ -48,6 +48,15 @@ impl From<Accidental> for f32 {
 }
 
 /// A musical note.
+///
+/// Example code:
+/// ```no_run
+/// let a_4 = Note::new(
+///     BaseNote::A,
+///     4,
+///     None
+/// );
+/// ```
 #[derive(Debug, Clone, Copy)]
 pub struct Note {
     base_note: BaseNote,
@@ -57,6 +66,7 @@ pub struct Note {
 }
 
 impl Note {
+    /// Creates a new [Note](#Note) from a [BaseNote](#BaseNote), octave, and optionally an [Accidental](#Accidental)
     pub fn new(base_note: BaseNote, octave: u8, accidental: Option<Accidental>) -> Self {
         Self {
             base_note: base_note,
@@ -66,13 +76,16 @@ impl Note {
         }
     }
 
+    /// Transposes a note +`semitones` semitones. The type of semitones is f32 because I wanted to
+    /// allow precise control of the pitch to cover all use cases.
     pub fn transpose(self, semitones: f32) -> Self {
         Self {
             offset: semitones,
             ..self
         }
     }
-
+    
+    /// Returns the frequency of this note in Hertz.
     pub fn as_hz(&self) -> u32 {
         // NOTE TO SELF: f = f0 * 2 ^ (n / 12) | f0 - reference pitch, n - semitones away from ref.
         use libm::{powf, roundf};
@@ -95,6 +108,7 @@ pub enum EnvelopeFrequency {
 }
 
 impl EnvelopeFrequency {
+    /// Returns the Envelope Frequency as a u16 value you can write to registers 13
     pub fn as_ep(self, master_clock_frequency: u32) -> u16 {
         match self {
             Self::Hertz(f_e) => master_clock_frequency
@@ -108,7 +122,7 @@ impl EnvelopeFrequency {
 
 /// A helper enum for setting the envelope's shape.
 ///
-/// To invert the shape use EnvelopeShape::invert().
+/// To invert the shape use InvertedBuiltin::(BuiltinEnvelopeShape).
 #[derive(Debug, Clone, Copy)]
 #[repr(u8)]
 pub enum BuiltinEnvelopeShape {
@@ -128,6 +142,8 @@ pub enum BuiltinEnvelopeShape {
 ///
 /// It consists of a `data` field - which is an array of u8 values with length 4096,
 /// and a length given in beats.
+///
+/// Warning: This code is todo!()
 #[allow(unused)]
 pub struct RawEnvelope {
     data: [u8; 4096],
@@ -157,16 +173,16 @@ impl RawEnvelope {
 }
 
 // An enum for all EnvelopeShape types
-pub enum EnvelopeShape {
+pub enum Envelope {
     Builtin(BuiltinEnvelopeShape),
     InvertedBuiltin(BuiltinEnvelopeShape),
     CustomBuiltin(u8),
     RawEnvelope(RawEnvelope),
 }
 
-impl From<&EnvelopeShape> for u8 {
-    fn from(value: &EnvelopeShape) -> Self {
-        use EnvelopeShape::*;
+impl From<&Envelope> for u8 {
+    fn from(value: &Envelope) -> Self {
+        use Envelope::*;
 
         match value {
             Builtin(builtin) => *builtin as u8,

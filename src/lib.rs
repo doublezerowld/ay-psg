@@ -138,18 +138,18 @@ impl ValidRegister for Register {
 }
 
 /// A command contains a value to be written to a specific register of the YM2149.
-#[allow(unused)]
 #[derive(Debug)]
 pub struct Command {
     pub register: u8,
     pub value: u8,
 }
 
+#[allow(unused)]
 impl Command {
     fn new(register: u8, value: u8) -> Self {
         Self { register, value }
     }
-
+    
     fn as_array(&self) -> [u8; 2] {
         [self.register, self.value]
     }
@@ -162,7 +162,8 @@ impl Command {
 /// struct DebugWriter {};
 /// impl CommandOutput for DebugWriter {
 ///     fn execute(&mut self, command: Command) {
-///         println!("Writing 0b{:08b} to register 0b{:08b}.", command.register, command.value);
+///         let arr = command.as_array();
+///         println!("Writing 0b{:08b} to register 0b{:08b}.", arr[0], arr[1]); 
 ///     };
 /// }
 /// ```
@@ -177,7 +178,11 @@ pub enum IoMode {
     Output = 1,
 }
 
-/// IO Port & Mixer settings
+/// IO port and mixer settings.
+///
+/// Note: Whereas the YM2149 enables tone / noise generators when the register stores
+/// a value of 0 (false), I wrote the code in a way to seem more logical. The fields 
+/// that take a `bool` argument instead enable a generator when its value is `true`.
 pub struct IoPortMixerSettings {
     pub gpio_port_a_mode: IoMode,
     pub gpio_port_b_mode: IoMode,
@@ -190,6 +195,7 @@ pub struct IoPortMixerSettings {
 }
 
 impl IoPortMixerSettings {
+    /// Returns a u8 containing the settings that can be written directly to register 7 of the YM2149.
     pub fn as_u8(self) -> u8 {
         let self_array = [
             self.gpio_port_a_mode as u8 == 0,
@@ -267,6 +273,23 @@ pub enum IoPort {
 // =========================================================
 
 /// A YM2149 chip struct.
+/// 
+/// The master_clock_frequency value is used to convert a frequency into a tone period by .tone_hz()
+///
+/// Example code:
+/// ```no_run
+/// let chip = YM2149::new(
+///     DebugWriter,
+///     2_000_000,
+/// )
+/// 
+/// chip.setup_io_and_mixer(
+///     IoPortMixerSettings {
+//         tone_ch_a: true,
+//         ..Default::default(),
+///     }
+/// );
+/// ```
 pub struct YM2149<C>
 where
     C: CommandOutput,
@@ -292,13 +315,14 @@ where
         self.command_output
             .execute(Command::new(register.address(), value));
     }
-
+    
+    /// Setup the IO ports and the internal mixer according to the IoPortMixerSettings specified.
     pub fn setup_io_and_mixer(&mut self, settings: IoPortMixerSettings) {
         self.command(Register::IoPortMixerSettings, settings.as_u8());
     }
 
     /// Write a value to one of the chip's [GPIO ports](#IoPort).
-    /// Note: This is a helper function.
+    /// Note: This is a simple helper function, equivalent to ``self.command(port as u8, value);``
     pub fn write_io(&mut self, port: IoPort, value: u8) {
         self.command(port as u8, value);
     }
@@ -315,8 +339,8 @@ where
     }
 
     /// Set the envelope generator's shape.
-    pub fn set_envelope_shape(&mut self, shape: &EnvelopeShape) {
-        self.command(0xD, shape.into());
+    pub fn set_envelope_shape(&mut self, envelope: &Envelope) {
+        self.command(0xD, envelope.into());
     }
 
     /// Play a tone with a TP of `period` on an [AudioChannel](#AudioChannel).
@@ -346,12 +370,12 @@ where
         self.tone_hz(channel, note_f);
     }
 
-    /// Play a [Note](#Note) on an [AudioChannel](#AudioChannel) with a given [BuiltinEnvelopeShape](#BuiltinEnvelopeShape).
+    /// Play a [Note](#Note) on an [AudioChannel](#AudioChannel) with a given [Envelope](#Envelope).
     pub fn play_note_with_envelope(
         &mut self,
         channel: AudioChannel,
         note: &Note,
-        with_envelope: &EnvelopeShape,
+        with_envelope: &Envelope,
     ) {
         self.play_note(channel, note);
         self.set_envelope_shape(with_envelope);
