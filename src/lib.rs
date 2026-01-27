@@ -149,21 +149,21 @@ impl Command {
     fn new(register: u8, value: u8) -> Self {
         Self { register, value }
     }
-    
+
     fn as_array(&self) -> [u8; 2] {
         [self.register, self.value]
     }
 }
 
 /// Helper trait that lets you implement an "output" for the commands that the driver generates.
-/// 
+///
 /// Example:
 /// ```no_run
 /// struct DebugWriter {};
 /// impl CommandOutput for DebugWriter {
 ///     fn execute(&mut self, command: Command) {
 ///         let arr = command.as_array();
-///         println!("Writing 0b{:08b} to register 0b{:08b}.", arr[0], arr[1]); 
+///         println!("Writing 0b{:08b} to register 0b{:08b}.", arr[0], arr[1]);
 ///     };
 /// }
 /// ```
@@ -181,7 +181,7 @@ pub enum IoMode {
 /// IO port and mixer settings.
 ///
 /// Note: Whereas the YM2149 enables tone / noise generators when the register stores
-/// a value of 0 (false), I wrote the code in a way to seem more logical. The fields 
+/// a value of 0 (false), I wrote the code in a way to seem more logical. The fields
 /// that take a `bool` argument instead enable a generator when its value is `true`.
 pub struct IoPortMixerSettings {
     pub gpio_port_a_mode: IoMode,
@@ -273,7 +273,7 @@ pub enum IoPort {
 // =========================================================
 
 /// A YM2149 chip struct.
-/// 
+///
 /// The master_clock_frequency value is used to convert a frequency into a tone period by .tone_hz()
 ///
 /// Example code:
@@ -282,7 +282,7 @@ pub enum IoPort {
 ///     DebugWriter,
 ///     2_000_000,
 /// )
-/// 
+///
 /// chip.setup_io_and_mixer(
 ///     IoPortMixerSettings {
 //         tone_ch_a: true,
@@ -296,6 +296,8 @@ where
 {
     command_output: C,
     master_clock_frequency: u32,
+    pub channel_data: [AudioChannelData; 3],
+    pub last_used_channel: Option<usize>,
 }
 
 impl<C> YM2149<C>
@@ -307,6 +309,12 @@ where
         Self {
             command_output,
             master_clock_frequency,
+            channel_data: [
+                AudioChannelData::new(0),
+                AudioChannelData::new(1),
+                AudioChannelData::new(2)
+            ],
+            last_used_channel: None
         }
     }
 
@@ -315,9 +323,13 @@ where
         self.command_output
             .execute(Command::new(register.address(), value));
     }
-    
+
     /// Setup the IO ports and the internal mixer according to the IoPortMixerSettings specified.
     pub fn setup_io_and_mixer(&mut self, settings: IoPortMixerSettings) {
+        self.channel_data[0].enabled = settings.tone_ch_a;
+        self.channel_data[1].enabled = settings.tone_ch_b;
+        self.channel_data[2].enabled = settings.tone_ch_c;
+
         self.command(Register::IoPortMixerSettings, settings.as_u8());
     }
 
@@ -351,23 +363,50 @@ where
     ///     - fMaster: master clock frequency
     ///     - TP: tone period
     pub fn tone(&mut self, channel: AudioChannel, period: u16) {
+        if !self.channel_data[channel.index()].enabled {
+            return;
+        }
+
         let bytes: [u8; 2] = period.to_le_bytes();
-        let register_pair_index = channel as u8 * 2;
+        let register_pair_index = self.channel_data[channel.index()].address * 2;
 
         self.command(register_pair_index, bytes[0]); // Fine tone, 8 bits
         self.command(register_pair_index + 1, bytes[1]); // Rough tone, 4 bits
+        self.last_used_channel = Some(channel.index())
     }
 
     /// Play a tone of a given frequency in Hz on an [AudioChannel](#AudioChannel).
     pub fn tone_hz(&mut self, channel: AudioChannel, frequency: u32) {
+        if !self.channel_data[channel.index()].enabled {
+            return;
+        }
         let tp: u32 = self.master_clock_frequency / (16 * frequency);
         self.tone(channel, tp as u16); // Take lowest 16 bits
     }
 
     /// Play a [Note](#Note) on an [AudioChannel](#AudioChannel).
     pub fn play_note(&mut self, channel: AudioChannel, note: &Note) {
-        let note_f = note.as_hz();
-        self.tone_hz(channel, note_f);
+        if !self.channel_data[channel.index()].enabled {
+            return;
+        }
+        self.channel_data[channel.index()].last_note = Some(note.clone());
+
+        self.tone_hz(
+            channel,
+            note.transpose(self.channel_data[channel.index()].pitch_bend).as_hz()
+        );
+    }
+
+    pub fn pitch_bend(&mut self, channel: AudioChannel, byte1: u8, byte2: u8) -> f32 {
+        self.channel_data[channel.index()].set_pitch_bend(byte1, byte2);
+        self.replay_last_note(channel);
+        self.channel_data[channel.index()].pitch_bend
+    }
+
+    pub fn replay_last_note(&mut self, channel: AudioChannel) {
+        if self.channel_data[channel.index()].last_note.is_some() {
+            self.play_note(channel, &self.channel_data[channel.index()].last_note.unwrap());
+        }
     }
 
     /// Play a [Note](#Note) on an [AudioChannel](#AudioChannel) with a given [Envelope](#Envelope).
@@ -403,7 +442,8 @@ where
     /// |-----------|-----|-----|-----|-----|-----|-----|-----|
     /// | N/A       | N/A | N/A |  M  | L3  | L2  | L1  | L0  |
     pub fn level(&mut self, channel: AudioChannel, level: u8) {
-        self.command(8 + channel as u8, level & 0x1F);
+        self.channel_data[channel.index()].level = level;
+        self.command(8 + channel.index() as u8, level & 0x1F);
     }
 
     // ============================================================
@@ -423,7 +463,7 @@ where
     /// This method is **unimplemented** *(at least, not for now...)*
     ///
     /// Feel free to try implementing it yourself, at your own risk.
-    fn read(&mut self, register: Register) -> u8 {
+    fn read(&self, register: Register) -> u8 {
         unimplemented!("Mode::READ and any functions associated with it are not yet usable.");
     }
 
@@ -439,7 +479,7 @@ where
     /// This method is **unimplemented** *(at least, not for now...)*
     ///
     /// Feel free to try implementing it yourself, at your own risk.
-    fn read_io(&mut self, port: IoPort) -> u8 {
+    fn read_io(&self, port: IoPort) -> u8 {
         unimplemented!("Mode::READ and any functions associated with it are not yet usable.");
     }
 }

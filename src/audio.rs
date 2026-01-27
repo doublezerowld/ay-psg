@@ -1,14 +1,44 @@
 const REFERENCE_PITCH: f32 = 440.0;
 
-/// One of the 3 analog audio channels (A, B, C) of the YM2149.
 #[derive(Debug, Clone, Copy)]
 pub enum AudioChannel {
-    /// ANALOG CHANNEL A (Pin 4)
     A,
-    /// ANALOG CHANNEL B (Pin 3)
     B,
-    /// ANALOG CHANNEL C (Pin 38)
-    C,
+    C
+}
+
+impl AudioChannel {
+    pub fn index(&self) -> usize {
+        self.clone() as usize
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct AudioChannelData {
+    pub address: u8,
+    pub enabled: bool,
+    pub level: u8,
+    pub pitch_bend: f32,
+    pub last_note: Option<Note>,
+}
+
+impl AudioChannelData {
+    pub fn new(address: u8) -> Self {
+        Self {
+            address: address,
+            enabled: false,
+            level: 0,
+            pitch_bend: 0.0,
+            last_note: None,
+        }
+    }
+
+    #[allow(unused)]
+    pub fn set_pitch_bend(&mut self, byte1: u8, byte2: u8) {
+        let new: f32 = (((byte2 as u16) << 7) + byte1 as u16).into();
+        let as_semitones: f32 = (new - 8192.0) / 1024.0;
+        self.pitch_bend = as_semitones;
+    }
 }
 
 /// One of the 7 white keys in the C Major scale.
@@ -80,11 +110,11 @@ impl Note {
     /// allow precise control of the pitch to cover all use cases.
     pub fn transpose(self, semitones: f32) -> Self {
         Self {
-            offset: semitones,
+            offset: self.offset + semitones,
             ..self
         }
     }
-    
+
     /// Returns the frequency of this note in Hertz.
     pub fn as_hz(&self) -> u32 {
         // NOTE TO SELF: f = f0 * 2 ^ (n / 12) | f0 - reference pitch, n - semitones away from ref.
