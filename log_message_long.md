@@ -1,4 +1,4 @@
-[This](https://youtu.be/8JomtZwbxoY) is a project I've been working on for the past few weeks. With the help of this server ( #embedded & #rust-help-1 ) and my own hard work, I'm happy to say that I've completed an early working version that supports\* MIDI :ferrisCat: 
+[This](https://youtu.be/8JomtZwbxoY) is a project I've been working on for the past few weeks. With the help of the rust official community server ( #embedded & #rust-help-1 ) and my own hard work, I'm happy to say that I've completed an early working version that supports\* MIDI :ferrisCat: 
 
 ## Some lore
 -# Skip if you're here for the technical stuff!
@@ -12,7 +12,7 @@ Writing the code for this thing was a pain at first, as I had zero experience wi
 
 The chip itself has 3 channels that each have their own (50% duty cycle square wave) tone generators and a shared noise & envelope generator. It takes data in through an 8 bit data bus, and along with the bus control decoder lets you write data to any one of its 16 registers. By controlling these pins and supplying a clock (1-4MHz, I generated mine using a 2MHz XOSC), one can get the chip to generate all sorts of fun noises.
 
-The generic driver works across all architectures because it's ``no_std`` and it's essentially just a hardware abstraction layer. You can use it in your own code by implementing the ``CommandOutput`` trait, which requires the handling of a ``Command`` parameter by ``fn execute(&mut self, command: Command);``. ``Command`` is a simple wrapper struct that contains the fields `register` and `value`, which as the names imply contains a value to be written to a specific register. 
+The generic driver works across all architectures because it's ``no_std`` and it's essentially just a hardware abstraction layer. You can use it in your own code by implementing the ``CommandOutput`` trait, which requires the handling of a ``Command`` parameter by ``fn execute(&mut self, command: Command);``. ``Command`` is a simple wrapper struct that contains the fields `register` and `value`, which as the names imply correspond to a value to be written to a specific register. 
 
 The way I have it set up in the video is:
 - I flashed the Pi Pico with a program that creates a fake serial device over USB (CDC-ACM), then reads 2 bytes at a time, forever.
@@ -26,5 +26,3 @@ I could go more in depth, but I'd be rewriting the datasheet at that point :ferr
 I'll release the source code I wrote for both the MIDI bridge and RPi soon™. For now, [here's the generic driver code!](https://github.com/OrdinarySoftwareDev/ym2149-core-rs)
 
 I'm open to feedback and suggestions, so feel free to reply!
-
-*p.s. as of writing, this code is NOT fully documented and even has wrong docs in some places - those are leftovers from the previous codebase it was used in. I'll update it tomorrow (though, honestly, I don't expect anyone to actually use it today)*
