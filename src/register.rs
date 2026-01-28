@@ -50,7 +50,11 @@ pub enum Register {
     /// **Example:**
     /// ```no_run
     /// // Enables only channel A, with IOA and IOB functioning as outputs.
-    /// use ym2149_core::{Command, CommandOutput, Register};
+    /// use ym2149_core::{
+    ///     command::{Command, CommandOutput},
+    ///     register::Register,
+    ///     chip::YM2149
+    /// };
     ///
     /// struct DebugWriter;
     ///
@@ -61,10 +65,10 @@ pub enum Register {
     ///     }
     /// }
     ///
-    /// let mut chip = ym2149_core::YM2149::new(
+    /// let mut chip = YM2149::new(
     ///     DebugWriter{},
     ///     2_000_000,
-    /// );
+    /// ).expect("Error building chip");
     ///
     /// chip.command(
     ///     Register::IoPortMixerSettings,

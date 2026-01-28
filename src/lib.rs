@@ -27,5 +27,6 @@ pub mod audio;
 pub mod chip;
 pub mod command;
 pub mod envelopes;
+pub mod errors;
 pub mod io;
-pub mod registers;
+pub mod register;

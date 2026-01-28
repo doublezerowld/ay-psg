@@ -1,5 +1,5 @@
 /// A command contains a value to be written to a specific register of the YM2149.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct Command {
     pub register: u8,
     pub value: u8,
@@ -22,7 +22,7 @@ impl Command {
 ///
 /// Example:
 /// ```no_run
-/// use ym2149_core::{Command, CommandOutput};
+/// use ym2149_core::command::{Command, CommandOutput};
 ///
 /// struct DebugWriter;
 ///

@@ -1,5 +1,6 @@
 /// One of the two modes of the I/O ports.
 #[repr(u8)]
+#[derive(Debug, Clone, Copy)]
 pub enum IoPortMode {
     Input = 0,
     Output = 1,
@@ -7,6 +8,7 @@ pub enum IoPortMode {
 
 /// One of the two GPIO ports of the YM2149.
 #[repr(u8)]
+#[derive(Debug, Clone, Copy)]
 pub enum IoPort {
     A = 0xE,
     B = 0xF,
@@ -17,6 +19,7 @@ pub enum IoPort {
 /// Note: Whereas the YM2149 enables tone / noise generators when the register stores
 /// a value of 0 (false), I wrote the code in a way to seem more logical. The fields
 /// that take a `bool` argument instead enable a generator when its value is `true`.
+#[derive(Debug)]
 pub struct IoPortMixerSettings {
     pub gpio_port_a_mode: IoPortMode,
     pub gpio_port_b_mode: IoPortMode,
@@ -78,6 +81,7 @@ impl Default for IoPortMixerSettings {
 /// | **WRITE**    |  1   |  1  |  0  |
 /// | **ADDRESS**  |  1   |  1  |  1  |
 #[repr(u8)]
+#[derive(Debug)]
 pub enum ChipMode {
     /// DA7~DA0 has high impedance.
     INACTIVE,
@@ -86,8 +90,8 @@ pub enum ChipMode {
     /// ---
     /// ### Warning!
     ///
-    /// Mode::READ makes the chip output 5V to the data bus. It is **STRONGLY** recommended
-    /// to use a level shifter in order to prevent permanent damage to your board.
+    /// ``Mode::READ`` makes the chip output 5V to the data bus. If you're using this crate in an embedded project,
+    /// make sure that 5V isn't too high for your board! If it is, you can use a level shifter to prevent damage to your board.
     READ,
     /// DA7~DA0 set to input mode, and data is written to register currently being addressed.
     WRITE,

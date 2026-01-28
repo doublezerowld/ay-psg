@@ -2,8 +2,9 @@
 use crate::audio::{AudioChannel, AudioChannelData, Note};
 use crate::command::{Command, CommandOutput};
 use crate::envelopes::{Envelope, EnvelopeFrequency};
+use crate::errors::Error;
 use crate::io::{IoPort, IoPortMixerSettings};
-use crate::registers::{LEVEL_REGS, Register, ValidRegister};
+use crate::register::{LEVEL_REGS, Register, ValidRegister};
 
 // =========================================================
 // ====================== CHIP STRUCT ======================
@@ -15,7 +16,11 @@ use crate::registers::{LEVEL_REGS, Register, ValidRegister};
 ///
 /// Example code:
 /// ```no_run
-/// use ym2149_core::{Command, CommandOutput, IoPortMixerSettings, YM2149};
+/// use ym2149_core::{
+///     command::{Command, CommandOutput},
+///     io::IoPortMixerSettings,
+///     chip::YM2149
+/// };
 ///
 /// struct DebugWriter;
 ///
@@ -29,7 +34,7 @@ use crate::registers::{LEVEL_REGS, Register, ValidRegister};
 /// let mut chip = YM2149::new(
 ///     DebugWriter{},
 ///     2_000_000,
-/// );
+/// ).expect("Error building chip");
 ///
 /// chip.setup_io_and_mixer(
 ///     IoPortMixerSettings {
@@ -38,6 +43,7 @@ use crate::registers::{LEVEL_REGS, Register, ValidRegister};
 ///     }
 /// );
 /// ```
+#[derive(Debug)]
 pub struct YM2149<C>
 where
     C: CommandOutput,
@@ -53,16 +59,19 @@ where
     C: CommandOutput,
 {
     /// Create a new struct for the YM2149.
-    pub fn new(command_output: C, master_clock_frequency: u32) -> Self {
-        Self {
-            command_output,
-            master_clock_frequency,
-            channel_data: [
-                AudioChannelData::new(0),
-                AudioChannelData::new(1),
-                AudioChannelData::new(2)
-            ],
-            last_used_channel: None
+    pub fn new(command_output: C, master_clock_frequency: u32) -> Result<Self, Error> {
+        match master_clock_frequency {
+            1_000_000..=4_000_000 => Ok(Self {
+                command_output,
+                master_clock_frequency,
+                channel_data: [
+                    AudioChannelData::new(0),
+                    AudioChannelData::new(1),
+                    AudioChannelData::new(2)
+                ],
+                last_used_channel: None
+            }),
+            _ => Err(Error::InvalidClockFrequency(master_clock_frequency)) //"The master_clock_frequency must be between 1MHz-4MHz!")
         }
     }
 
@@ -88,14 +97,16 @@ where
     }
 
     /// Set the envelope generator's frequency.
-    pub fn set_envelope_frequency(&mut self, frequency: EnvelopeFrequency) {
-        let r: u16 = frequency.as_ep(self.master_clock_frequency);
+    pub fn set_envelope_frequency(&mut self, frequency: EnvelopeFrequency) -> Result<u16, Error> {
+        let r: u16 = frequency.as_ep(self.master_clock_frequency)?;
 
         let rough: u8 = (r >> 8) as u8; // High byte
         let fine: u8 = r as u8; // Low byte
 
         self.command(Register::EFreq8bitRoughAdj, rough);
         self.command(Register::EFreq8bitFineAdj, fine);
+
+        Ok(r)
     }
 
     /// Set the envelope generator's shape.
@@ -110,52 +121,62 @@ where
     ///     - f: target frequency
     ///     - fMaster: master clock frequency
     ///     - TP: tone period
-    pub fn tone(&mut self, channel: AudioChannel, period: u16) {
-        if !self.channel_data[channel.index()].enabled {
-            return;
+    pub fn tone(&mut self, channel: AudioChannel, period: u16) -> Result<(), Error> {
+        if period > 2_u16.pow(12) {
+            return Err(Error::TonePeriodOutOfRange(period));
         }
 
         let bytes: [u8; 2] = period.to_le_bytes();
         let register_pair_index = self.channel_data[channel.index()].address * 2;
 
-        self.command(register_pair_index, bytes[0]); // Fine tone, 8 bits
-        self.command(register_pair_index + 1, bytes[1]); // Rough tone, 4 bits
-        self.last_used_channel = Some(channel.index())
+        self.command(register_pair_index, bytes[0]); // Fine adjustment, 8 bits
+        self.command(register_pair_index + 1, bytes[1]); // Rough adjustment, 4 bits
+        self.last_used_channel = Some(channel.index());
+
+        Ok(())
     }
 
     /// Play a tone of a given frequency in Hz on an [AudioChannel](#AudioChannel).
-    pub fn tone_hz(&mut self, channel: AudioChannel, frequency: u32) {
-        if !self.channel_data[channel.index()].enabled {
-            return;
+    pub fn tone_hz(&mut self, channel: AudioChannel, frequency: u32) -> Result<(), Error> {
+        if frequency == 0 {
+            return Err(Error::DivisionByZero);
         }
+
         let tp: u32 = self.master_clock_frequency / (16 * frequency);
-        self.tone(channel, tp as u16); // Take lowest 16 bits
+        self.tone(channel, tp as u16)?; // Take lowest 16 bits
+
+        Ok(())
     }
 
     /// Play a [Note](#Note) on an [AudioChannel](#AudioChannel).
-    pub fn play_note(&mut self, channel: AudioChannel, note: &Note) {
-        if !self.channel_data[channel.index()].enabled {
-            return;
-        }
+    pub fn play_note(&mut self, channel: AudioChannel, note: &Note) -> Result<(), Error> {
         self.channel_data[channel.index()].last_note = Some(note.clone());
 
         self.tone_hz(
             channel,
             note.transpose(self.channel_data[channel.index()].pitch_bend).as_hz()
-        );
+        )?;
+
+        Ok(())
     }
 
     /// Set an AudioChannel's pitch bend (takes a MIDI command).
-    pub fn pitch_bend(&mut self, channel: AudioChannel, byte1: u8, byte2: u8) -> f32 {
+    pub fn pitch_bend(&mut self, channel: AudioChannel, byte1: u8, byte2: u8, replay_last: bool) -> Result<f32, Error> {
         self.channel_data[channel.index()].set_pitch_bend(byte1, byte2);
-        self.replay_last_note(channel);
-        self.channel_data[channel.index()].pitch_bend
+        if replay_last {
+            self.replay_last_note(channel)?;
+        }
+
+        Ok(self.channel_data[channel.index()].pitch_bend)
     }
 
     /// Replay the last played note on a given channel.
-    pub fn replay_last_note(&mut self, channel: AudioChannel) {
-        if self.channel_data[channel.index()].last_note.is_some() {
-            self.play_note(channel, &self.channel_data[channel.index()].last_note.unwrap());
+    pub fn replay_last_note(&mut self, channel: AudioChannel) -> Result<(), Error> {
+        let last_note = self.channel_data[channel.index()].last_note;
+
+        match last_note {
+            Some(last_note) => { self.play_note(channel, &last_note)?; Ok(()) },
+            None => Err(Error::NoLastNote)
         }
     }
 
@@ -165,16 +186,22 @@ where
         channel: AudioChannel,
         note: &Note,
         with_envelope: &Envelope,
-    ) {
-        self.play_note(channel, note);
+    ) -> Result<(), Error> {
+        self.play_note(channel, note)?;
         self.set_envelope_shape(with_envelope);
+        Ok(())
     }
 
     /// Set the frequency of the noise generator.
     ///
     /// Mask: 0x1F
-    pub fn set_noise_freq(&mut self, frequency: u8) {
-        self.command(Register::NoiseFreq5bit, frequency & 0x1F);
+    pub fn set_noise_freq(&mut self, frequency: u8) -> Result<(), Error> {
+        if frequency <= 0x1F {
+            self.command(Register::NoiseFreq5bit, frequency);
+            Ok(())
+        } else {
+            Err(Error::NoiseFrequencyOutOfRange(frequency))
+        }
     }
 
     /// Set the volume of an [AudioChannel](#AudioChannel).

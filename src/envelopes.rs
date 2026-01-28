@@ -1,4 +1,7 @@
+use crate::errors::Error;
+
 // An enum for all EnvelopeShape types
+#[derive(Debug, Clone, Copy)]
 pub enum Envelope {
     Builtin(BuiltinEnvelopeShape),
     InvertedBuiltin(BuiltinEnvelopeShape),
@@ -8,7 +11,7 @@ pub enum Envelope {
 
 impl From<&Envelope> for u8 {
     fn from(value: &Envelope) -> Self {
-        use Envelope::*;
+        use Envelope::{Builtin, CustomBuiltin, InvertedBuiltin, RawEnvelope};
 
         match value {
             Builtin(builtin) => *builtin as u8,
@@ -16,7 +19,7 @@ impl From<&Envelope> for u8 {
             CustomBuiltin(n) => *n,
 
             #[allow(unused)]
-            RawEnvelope(raw) => todo!(),
+            RawEnvelope(raw) => unimplemented!(),
         }
     }
 }
@@ -43,9 +46,8 @@ pub enum BuiltinEnvelopeShape {
 ///
 /// It consists of a `data` field - which is an array of u8 values with length 4096,
 /// and a length given in beats.
-///
-/// Warning: This code is todo!()
 #[allow(unused)]
+#[derive(Debug, Clone, Copy)]
 pub struct RawEnvelope {
     data: [u8; 4096],
     length_beats: u8,
@@ -74,7 +76,7 @@ impl RawEnvelope {
 }
 
 /// A helper enum for setting the envelope repetition frequency f_e.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug)]
 pub enum EnvelopeFrequency {
     Hertz(u16),
     BeatsPerMinute(u16),
@@ -82,14 +84,21 @@ pub enum EnvelopeFrequency {
 }
 
 impl EnvelopeFrequency {
-    /// Returns the Envelope Frequency as a u16 value you can write to registers 13
-    pub fn as_ep(self, master_clock_frequency: u32) -> u16 {
+    /// Returns the EnvelopeFrequency as a u16 value for registers 11 (LSB) and 12 (MSB).
+    pub fn as_ep(self, master_clock_frequency: u32) -> Result<u16, Error> {
         match self {
-            Self::Hertz(f_e) => master_clock_frequency
-                .checked_div(256 * (f_e as u32))
-                .unwrap_or(1) as u16,
-            Self::BeatsPerMinute(bpm) => 60 * Self::Hertz(bpm).as_ep(master_clock_frequency),
-            Self::Integer(x) => x,
+            Self::Hertz(f_e) => {
+                if f_e == 0 {
+                    return Err(Error::DivisionByZero);
+                }
+                let period = master_clock_frequency / (256 * f_e as u32);
+                period.try_into().map_err(|_| Error::TonePeriodOutOfRange(period as u16))
+            }
+            Self::BeatsPerMinute(bpm) => {
+                let hz = Self::Hertz(bpm).as_ep(master_clock_frequency)?;
+                (60 * hz).try_into().map_err(|_| Error::TonePeriodOutOfRange(0))
+            }
+            Self::Integer(x) => Ok(x),
         }
     }
 }
