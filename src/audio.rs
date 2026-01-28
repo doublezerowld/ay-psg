@@ -1,5 +1,7 @@
+/// Reference pitch of A=440.0Hz.
 const REFERENCE_PITCH: f32 = 440.0;
 
+/// One of the YM2149's 3 audio channels.
 #[derive(Debug, Clone, Copy)]
 pub enum AudioChannel {
     A,
@@ -13,6 +15,7 @@ impl AudioChannel {
     }
 }
 
+/// This helper struct contains data about the YM2149's channels' current states.
 #[derive(Debug, Clone, Copy)]
 pub struct AudioChannelData {
     pub address: u8,
@@ -23,6 +26,7 @@ pub struct AudioChannelData {
 }
 
 impl AudioChannelData {
+    /// Create self.
     pub fn new(address: u8) -> Self {
         Self {
             address: address,
@@ -33,11 +37,29 @@ impl AudioChannelData {
         }
     }
 
+    /// Set a channel's pitch bend.
     #[allow(unused)]
     pub fn set_pitch_bend(&mut self, byte1: u8, byte2: u8) {
         let new: f32 = (((byte2 as u16) << 7) + byte1 as u16).into();
         let as_semitones: f32 = (new - 8192.0) / 1024.0;
         self.pitch_bend = as_semitones;
+    }
+}
+
+/// An accidental, represented by an i8 value that corresponds to the offset in quarter tones.
+#[derive(Debug, Clone, Copy)]
+#[repr(i8)]
+pub enum Accidental {
+    Natural = 0,
+    Sharp = 2,
+    Flat = -2,
+    MicroSharp = 1,
+    MicroFlat = -1,
+}
+
+impl From<Accidental> for f32 {
+    fn from(acc: Accidental) -> f32 {
+        (acc as i8) as f32 / 2.0
     }
 }
 
@@ -57,23 +79,6 @@ pub enum BaseNote {
 impl From<BaseNote> for f32 {
     fn from(bn: BaseNote) -> f32 {
         bn as i8 as f32
-    }
-}
-
-/// An accidental, represented by an i8 value that corresponds to the offset in quarter tones.
-#[derive(Debug, Clone, Copy)]
-#[repr(i8)]
-pub enum Accidental {
-    Natural = 0,
-    Sharp = 2,
-    Flat = -2,
-    MicroSharp = 1,
-    MicroFlat = -1,
-}
-
-impl From<Accidental> for f32 {
-    fn from(acc: Accidental) -> f32 {
-        (acc as i8) as f32 / 2.0
     }
 }
 
@@ -119,7 +124,7 @@ impl Note {
 
     /// Returns the frequency of this note in Hertz.
     pub fn as_hz(&self) -> u32 {
-        // NOTE TO SELF: f = f0 * 2 ^ (n / 12) | f0 - reference pitch, n - semitones away from ref.
+        // f = f0 * 2 ^ (n / 12) | f0 - reference pitch, n - semitones away from ref.
         use libm::{powf, roundf};
 
         let distance_a4: f32 = f32::from(self.base_note)
@@ -128,101 +133,5 @@ impl Note {
             + self.offset;
 
         roundf(REFERENCE_PITCH * powf(2.0, distance_a4 / 12.0)) as u32
-    }
-}
-
-/// A helper enum for setting the envelope repetition frequency f_e.
-#[derive(Debug, Clone, Copy)]
-pub enum EnvelopeFrequency {
-    Hertz(u16),
-    BeatsPerMinute(u16),
-    Integer(u16),
-}
-
-impl EnvelopeFrequency {
-    /// Returns the Envelope Frequency as a u16 value you can write to registers 13
-    pub fn as_ep(self, master_clock_frequency: u32) -> u16 {
-        match self {
-            Self::Hertz(f_e) => master_clock_frequency
-                .checked_div(256 * (f_e as u32))
-                .unwrap_or(1) as u16,
-            Self::BeatsPerMinute(bpm) => 60 * Self::Hertz(bpm).as_ep(master_clock_frequency),
-            Self::Integer(x) => x,
-        }
-    }
-}
-
-/// A helper enum for setting the envelope's shape.
-///
-/// To invert the shape use InvertedBuiltin::(BuiltinEnvelopeShape).
-#[derive(Debug, Clone, Copy)]
-#[repr(u8)]
-pub enum BuiltinEnvelopeShape {
-    /// Fade out and hold low
-    FadeOut = 0b00001001,
-    /// Fade in and hold high
-    FadeIn = 0b00001101,
-    /// Fade in then hold low
-    Tooth = 0b00001111,
-    /// Fade in every repetition
-    Saw = 0b00001100,
-    /// Alternate between fade out and fade in
-    Triangle = 0b00001110,
-}
-
-/// A raw envelope for more precise control of channel levels.
-///
-/// It consists of a `data` field - which is an array of u8 values with length 4096,
-/// and a length given in beats.
-///
-/// Warning: This code is todo!()
-#[allow(unused)]
-pub struct RawEnvelope {
-    data: [u8; 4096],
-    length_beats: u8,
-}
-
-#[allow(unused)]
-impl RawEnvelope {
-    fn invert(&mut self) {
-        for i in 0..4096 {
-            self.data[i] = 0xF - self.data[i];
-        }
-    }
-
-    fn scale(&mut self, scale: f32) {
-        for i in 0..4096 {
-            let scaled = (self.data[i] as f32 * scale).clamp(0.0, 255.0) as u8;
-            self.data[i] = scaled;
-        }
-    }
-
-    fn offset(&mut self, offset: i8) {
-        for i in 0..4096 {
-            self.data[i] += offset as u8;
-        }
-    }
-}
-
-// An enum for all EnvelopeShape types
-pub enum Envelope {
-    Builtin(BuiltinEnvelopeShape),
-    InvertedBuiltin(BuiltinEnvelopeShape),
-    CustomBuiltin(u8),
-    RawEnvelope(RawEnvelope),
-}
-
-impl From<&Envelope> for u8 {
-    fn from(value: &Envelope) -> Self {
-        use Envelope::*;
-
-        match value {
-            Builtin(builtin) => *builtin as u8,
-            InvertedBuiltin(builtin) => (*builtin as u8) ^ (0b00000100),
-            CustomBuiltin(n) => *n,
-
-            #[allow(unused)]
-            RawEnvelope(raw) => todo!(),
-        }
     }
 }
