@@ -22,6 +22,7 @@
 #![no_std]
 use core::convert::Into;
 
+// Imports
 pub mod audio;
 use audio::*;
 
@@ -77,8 +78,24 @@ pub enum Register {
     /// **Example:**
     /// ```no_run
     /// // Enables only channel A, with IOA and IOB functioning as outputs.
+    /// use ym2149_core::{Command, CommandOutput, Register};
+    ///
+    /// struct DebugWriter;
+    ///
+    /// impl CommandOutput for DebugWriter {
+    ///     fn execute(&mut self, command: Command) {
+    ///         let arr = command.as_array();
+    ///         println!("Writing 0b{:08b} to register 0b{:08b}.", arr[0], arr[1]);
+    ///     }
+    /// }
+    ///
+    /// let mut chip = ym2149_core::YM2149::new(
+    ///     DebugWriter{},
+    ///     2_000_000,
+    /// );
+    ///
     /// chip.command(
-    ///     Registers::IoPortMixerSettings,
+    ///     Register::IoPortMixerSettings,
     ///     0b11111110
     /// );
     /// ```
@@ -146,11 +163,11 @@ pub struct Command {
 
 #[allow(unused)]
 impl Command {
-    fn new(register: u8, value: u8) -> Self {
+    pub fn new(register: u8, value: u8) -> Self {
         Self { register, value }
     }
 
-    fn as_array(&self) -> [u8; 2] {
+    pub fn as_array(&self) -> [u8; 2] {
         [self.register, self.value]
     }
 }
@@ -159,12 +176,15 @@ impl Command {
 ///
 /// Example:
 /// ```no_run
-/// struct DebugWriter {};
+/// use ym2149_core::{Command, CommandOutput};
+///
+/// struct DebugWriter;
+///
 /// impl CommandOutput for DebugWriter {
 ///     fn execute(&mut self, command: Command) {
 ///         let arr = command.as_array();
 ///         println!("Writing 0b{:08b} to register 0b{:08b}.", arr[0], arr[1]);
-///     };
+///     }
 /// }
 /// ```
 pub trait CommandOutput {
@@ -278,15 +298,26 @@ pub enum IoPort {
 ///
 /// Example code:
 /// ```no_run
-/// let chip = YM2149::new(
-///     DebugWriter,
+/// use ym2149_core::{Command, CommandOutput, IoPortMixerSettings, YM2149};
+///
+/// struct DebugWriter;
+///
+/// impl CommandOutput for DebugWriter {
+///     fn execute(&mut self, command: Command) {
+///         print!("Register 0b{:08b} ({:?}), ", command.register, command.register);
+///         println!("0b{:08b} ({:?})", command.value, command.value);
+///     }
+/// }
+///
+/// let mut chip = YM2149::new(
+///     DebugWriter{},
 ///     2_000_000,
-/// )
+/// );
 ///
 /// chip.setup_io_and_mixer(
 ///     IoPortMixerSettings {
-//         tone_ch_a: true,
-//         ..Default::default(),
+///         tone_ch_a: true,
+///         ..Default::default()
 ///     }
 /// );
 /// ```

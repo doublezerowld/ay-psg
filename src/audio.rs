@@ -81,6 +81,8 @@ impl From<Accidental> for f32 {
 ///
 /// Example code:
 /// ```no_run
+/// use ym2149_core::audio::{Note, BaseNote};
+///
 /// let a_4 = Note::new(
 ///     BaseNote::A,
 ///     4,
