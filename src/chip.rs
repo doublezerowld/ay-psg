@@ -1,5 +1,5 @@
 // Imports
-use crate::audio::{AudioChannel, AudioChannelData, Note};
+use crate::audio::{AudioChannel, Note};
 use crate::command::{Command, CommandOutput};
 use crate::envelopes::{Envelope, EnvelopeFrequency};
 use crate::errors::Error;
@@ -48,9 +48,8 @@ pub struct YM2149<C>
 where
     C: CommandOutput,
 {
-    command_output: C,
-    master_clock_frequency: u32,
-    pub channel_data: [AudioChannelData; 3],
+    pub command_output: C,
+    pub master_clock_frequency: u32,
     pub last_used_channel: Option<usize>,
 }
 
@@ -64,11 +63,6 @@ where
             1_000_000..=4_000_000 => Ok(Self {
                 command_output,
                 master_clock_frequency,
-                channel_data: [
-                    AudioChannelData::new(0),
-                    AudioChannelData::new(1),
-                    AudioChannelData::new(2)
-                ],
                 last_used_channel: None
             }),
             _ => Err(Error::InvalidClockFrequency(master_clock_frequency)) //"The master_clock_frequency must be between 1MHz-4MHz!")
@@ -83,10 +77,6 @@ where
 
     /// Setup the IO ports and the internal mixer according to the IoPortMixerSettings specified.
     pub fn setup_io_and_mixer(&mut self, settings: IoPortMixerSettings) {
-        self.channel_data[0].enabled = settings.tone_ch_a;
-        self.channel_data[1].enabled = settings.tone_ch_b;
-        self.channel_data[2].enabled = settings.tone_ch_c;
-
         self.command(Register::IoPortMixerSettings, settings.as_u8());
     }
 
@@ -127,7 +117,7 @@ where
         }
 
         let bytes: [u8; 2] = period.to_le_bytes();
-        let register_pair_index = self.channel_data[channel.index()].address * 2;
+        let register_pair_index = channel as u8 * 2;
 
         self.command(register_pair_index, bytes[0]); // Fine adjustment, 8 bits
         self.command(register_pair_index + 1, bytes[1]); // Rough adjustment, 4 bits
@@ -150,34 +140,12 @@ where
 
     /// Play a [Note](#Note) on an [AudioChannel](#AudioChannel).
     pub fn play_note(&mut self, channel: AudioChannel, note: &Note) -> Result<(), Error> {
-        self.channel_data[channel.index()].last_note = Some(note.clone());
-
         self.tone_hz(
             channel,
-            note.transpose(self.channel_data[channel.index()].pitch_bend).as_hz()
+            note.as_hz()
         )?;
 
         Ok(())
-    }
-
-    /// Set an AudioChannel's pitch bend (takes a MIDI command).
-    pub fn pitch_bend(&mut self, channel: AudioChannel, byte1: u8, byte2: u8, replay_last: bool) -> Result<f32, Error> {
-        self.channel_data[channel.index()].set_pitch_bend(byte1, byte2);
-        if replay_last {
-            self.replay_last_note(channel)?;
-        }
-
-        Ok(self.channel_data[channel.index()].pitch_bend)
-    }
-
-    /// Replay the last played note on a given channel.
-    pub fn replay_last_note(&mut self, channel: AudioChannel) -> Result<(), Error> {
-        let last_note = self.channel_data[channel.index()].last_note;
-
-        match last_note {
-            Some(last_note) => { self.play_note(channel, &last_note)?; Ok(()) },
-            None => Err(Error::NoLastNote)
-        }
     }
 
     /// Play a [Note](#Note) on an [AudioChannel](#AudioChannel) with a given [Envelope](#Envelope).
@@ -219,7 +187,6 @@ where
     /// |-----------|-----|-----|-----|-----|-----|-----|-----|
     /// | N/A       | N/A | N/A |  M  | L3  | L2  | L1  | L0  |
     pub fn level(&mut self, channel: AudioChannel, level: u8) {
-        self.channel_data[channel.index()].level = level;
         self.command(LEVEL_REGS[channel.index()] as u8, level & 0x1F);
     }
 
