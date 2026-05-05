@@ -1,14 +1,27 @@
 use crate::errors::Error;
 
-/// Reference pitch of A=440.0Hz.
-const REFERENCE_PITCH: f32 = 440.0;
-
-/// One of the YM2149's 3 audio channels.
+/// One of the YM2149's 3 audio channels. This enum is used by code that requires any audio-related operations.
+///
+/// # Basic usage
+///
+/// ---
+///
+/// ```no_run
+/// use ym2149-core::audio::AudioChannel;
+///
+/// chip.tone_hz(AudioChannel::A, 110)?;
+/// chip.tone_hz(AudioChannel::B, 220)?;
+/// chip.tone_hz(AudioChannel::C, 440)?;
+/// ```
+#[repr(u8)]
 #[derive(Debug, Clone, Copy)]
 pub enum AudioChannel {
+    /// Audio Channel A
     A,
+    /// Audio Channel B
     B,
-    C
+    /// Audio Channel C
+    C,
 }
 
 impl AudioChannel {
@@ -17,99 +30,103 @@ impl AudioChannel {
     }
 }
 
-
-
-/// An accidental, represented by an i8 value that corresponds to the offset in quarter tones.
-#[repr(i8)]
-#[derive(Debug, Clone, Copy)]
-pub enum Accidental {
-    Natural = 0,
-    Sharp = 2,
-    Flat = -2,
-    MicroSharp = 1,
-    MicroFlat = -1,
-}
-
-impl From<Accidental> for f32 {
-    fn from(acc: Accidental) -> f32 {
-        (acc as i8) as f32 / 2.0
-    }
-}
-
-/// Offsets of the 7 white keys in the C Major scale (from A), in semitones.
-#[repr(i8)]
-#[derive(Debug, Clone, Copy)]
-pub enum BaseNote {
-    C = -9,
-    D = -7,
-    E = -5,
-    F = -4,
-    G = -2,
-    A = 0,
-    B = 2,
-}
-
-impl From<BaseNote> for f32 {
-    fn from(bn: BaseNote) -> f32 {
-        bn as i8 as f32
-    }
-}
-
-/// A musical note.
+/// This enum covers all envelope shapes.
 ///
-/// Example code:
+/// # Basic usage
+///
+/// ---
+///
 /// ```no_run
-/// use ym2149_core::audio::{Note, BaseNote};
+/// use ym2149-core::audio::AudioChannel;
 ///
-/// let a_4 = Note::new(
-///     BaseNote::A,
-///     4,
-///     None
-/// );
+/// chip.set(AudioChannel::A, 110)?;
+/// chip.tone_hz(AudioChannel::B, 220)?;
+/// chip.tone_hz(AudioChannel::C, 440)?;
 /// ```
 #[derive(Debug, Clone, Copy)]
-pub struct Note {
-    base_note: BaseNote,
-    octave: u8,
-    accidental: Option<Accidental>,
-    offset: f32,
+pub enum Envelope {
+    /// One of the five builtin envelope shapes.
+    Shape(BuiltinEnvelopeShape),
+    /// One of the five builtin envelope shapes, inverted.
+    InvertedShape(BuiltinEnvelopeShape),
+    /// A byte to be written to register 0xD of the chip.
+    ///
+    /// ---
+    ///
+    /// From the datasheet:
+    ///
+    /// The envelope generator counts the envelope clock f_EA 32 times for each envelope pattern cycle.
+    /// The envelope level is determined by the 5 bit output (E4~E0) of the counter. The shape of
+    /// this envelope is created by increasing, decreasing, stopping, or repeating this counter. The
+    /// shape is controlled by bits B3 ~ B0 of the register R_D.
+    ///
+    /// | B7 (MSB)  | B6  | B5  | B4  | B3  | B2  | B1  | B0  |
+    /// |-----------|-----|-----|-----|-----|-----|-----|-----|
+    /// | N/A       | N/A | N/A | N/A |CONT |ATT  |ALT  |HOLD |
+    Raw(u8),
 }
 
-impl Note {
-    /// Creates a new [Note](#Note) from a [BaseNote](#BaseNote), octave, and optionally an [Accidental](#Accidental)
-    pub fn new(base_note: BaseNote, octave: u8, accidental: Option<Accidental>) -> Result<Self, Error> {
-        if octave <= 14 {
-            Ok(Self {
-                base_note: base_note,
-                octave: octave.clamp(0, 14),
-                accidental: accidental,
-                offset: 0.0,
-            })
-        } else {
-            Err(Error::OctaveOutOfRange(octave))
-        }
+impl From<&Envelope> for u8 {
+    fn from(value: &Envelope) -> Self {
+        use Envelope::*; // for this scope only
 
-    }
-
-    /// Transposes a note +`semitones` semitones. The type of semitones is f32 because I wanted to
-    /// allow precise control of the pitch to cover all use cases.
-    pub fn transpose(self, semitones: f32) -> Self {
-        Self {
-            offset: self.offset + semitones,
-            ..self
+        match value {
+            Shape(builtin) => *builtin as u8,
+            InvertedShape(builtin) => (*builtin as u8) ^ (0b0100),
+            Raw(n) => *n,
         }
     }
+}
 
-    /// Returns the frequency of this note in Hertz.
-    pub fn as_hz(&self) -> u32 {
-        // f = f0 * 2 ^ (n / 12) | f0 - reference pitch, n - semitones away from ref.
-        use libm::{powf, roundf};
+/// One of the five main builtin envelope shapes.
+///
+/// To invert the shape use [`Envelope::InvertedBuiltin`].
+#[derive(Debug, Clone, Copy)]
+#[repr(u8)]
+pub enum BuiltinEnvelopeShape {
+    /// Fade out and hold low
+    FadeOut = 0b1001,
+    /// Fade in and hold high
+    FadeIn = 0b1101,
+    /// Fade in then hold low
+    Tooth = 0b1111,
+    /// Fade in every repetition
+    Saw = 0b1100,
+    /// Alternate between fade out and fade in
+    Triangle = 0b1110,
+}
 
-        let distance_a4: f32 = f32::from(self.base_note)
-            + f32::from(self.accidental.unwrap_or(Accidental::Natural))
-            + (self.octave.clamp(0, 14) as f32 - 4.0) * 12.0
-            + self.offset;
+/// A helper enum for setting the envelope repetition frequency (f_e).
+#[derive(Debug)]
+pub enum EnvelopeFrequency {
+    /// Frequency in Hertz
+    Hertz(u16),
+    /// Frequency in beats per minute
+    BeatsPerMinute(u16),
+    /// Raw envelope frequncy value to be written to the chip
+    Integer(u16),
+}
 
-        roundf(REFERENCE_PITCH * powf(2.0, distance_a4 / 12.0)) as u32
+impl EnvelopeFrequency {
+    /// Returns the EnvelopeFrequency as a u16 value for registers 11 (LSB) and 12 (MSB).
+    pub fn as_ep(self, clock_frequency: u32) -> Result<u16, Error> {
+        match self {
+            Self::Hertz(f_e) => {
+                if f_e == 0 {
+                    return Err(Error::DivisionByZero);
+                }
+                let period = clock_frequency / (256 * f_e as u32);
+                period
+                    .try_into()
+                    .map_err(|_| Error::TonePeriodOutOfRange(period as u16))
+            }
+            Self::BeatsPerMinute(bpm) => {
+                let hz = Self::Hertz(bpm).as_ep(clock_frequency)?;
+                (60 * hz)
+                    .try_into()
+                    .map_err(|_| Error::TonePeriodOutOfRange(0))
+            }
+            Self::Integer(x) => Ok(x),
+        }
     }
 }

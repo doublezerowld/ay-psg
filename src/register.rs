@@ -1,3 +1,26 @@
+//! Registers
+
+use core::fmt::Display;
+
+pub const READABLE_REG_NAMES: [&'static str; 16] = [
+    "Frequency of channel A, 8 bit fine tone adjustment",
+    "Frequency of channel A, 4 bit rough tone adjustment",
+    "Frequency of channel B, 8 bit fine tone adjustment",
+    "Frequency of channel B, 4 bit rough tone adjustment",
+    "Frequency of channel C, 8 bit fine tone adjustment",
+    "Frequency of channel C, 4 bit rough tone adjustment",
+    "Frequency of noise, 5 bit noise frequency",
+    "I/O port and mixer settings",
+    "Level of channel A",
+    "Level of channel B",
+    "Level of channel C",
+    "Frequency of envelope, 8 bit fine adjustment",
+    "Frequency of envelope, 8 bit rough adjustment",
+    "Shape of envelope",
+    "Data of I/O port A",
+    "Data of I/O port B",
+];
+
 /// One of the 16 registers (0-15) of the YM2149 sound chip.
 ///
 /// Used to select which register to write / read.
@@ -35,6 +58,8 @@ pub enum Register {
     NoiseFreq5bit,
 
     /// **I/O Port and mixer settings**
+    ///
+    /// ---
     ///
     /// From the datasheet:
     /// - Sound is output when '0' is written to the register.
@@ -79,9 +104,8 @@ pub enum Register {
 
     /// **Level of channel A**
     /// ---
-    /// **Level control** (formats identical for ALevel, BLevel and CLevel)
     ///
-    /// From the datasheet:
+    /// From the datasheet (formats identical for ALevel, BLevel and CLevel):
     /// - Mode M selects whether the level is fixed (when M = 0) or variable (M = 1).
     /// - When M = 0, the level is determined from one of 16 by level selection signals L3, L2, L1, and L0 which compromise the lower four bits.
     /// - When M = 1, the level is determined by the 5 bit output of E4, E3, E2, E1, and E0 of the envelope generator of the SSG.
@@ -93,12 +117,12 @@ pub enum Register {
 
     /// **Level of channel B**
     ///
-    /// Same format as [ALevel](#alevel)
+    /// Same bit layout as [`ALevel`]
     BLevel,
 
     /// **Level of channel C**
     ///
-    /// Same format as [ALevel](#alevel)
+    /// Same bit layout as [`ALevel`]
     CLevel,
 
     /// Frequency of envelope: 8 bit fine adjustment
@@ -117,18 +141,24 @@ pub enum Register {
 pub const LEVEL_REGS: [Register; 3] = [Register::ALevel, Register::BLevel, Register::CLevel];
 
 /// Helper trait implemented for u8 and crate::Register to make writing to registers easier.
-pub trait ValidRegister {
+pub trait RegisterIndex {
     fn address(self) -> u8;
 }
 
-impl ValidRegister for u8 {
+impl RegisterIndex for u8 {
     fn address(self) -> u8 {
         self.clamp(0, 15)
     }
 }
 
-impl ValidRegister for Register {
+impl RegisterIndex for Register {
     fn address(self) -> u8 {
         (self as u8).clamp(0, 15)
+    }
+}
+
+impl Display for Register {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{}", READABLE_REG_NAMES[self.clone() as usize])
     }
 }

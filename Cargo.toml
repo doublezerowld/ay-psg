@@ -11,5 +11,9 @@ repository = "https://github.com/OrdinarySoftwareDev/ym2149-core-rs"
 keywords = ["ym2149", "audio", "chiptune", "psg", "hal"]
 categories = ["embedded", "hardware-support", "multimedia::audio", "no-std::no-alloc"]
 
+[features]
+notes = []
+read = []
+
 [dependencies]
 libm = "0.2.16"

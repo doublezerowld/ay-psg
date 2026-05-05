@@ -1,9 +1,17 @@
-/// One of the two modes of the I/O ports.
+//! Read/write operations to IO ports
+
+use crate::errors::Error;
+
+pub trait BusReader {
+    fn read() -> Result<u8, Error>;
+}
+
+/// One of the two modes of the IO ports.
 #[repr(u8)]
 #[derive(Debug, Clone, Copy)]
 pub enum IoPortMode {
-    Input = 0,
-    Output = 1,
+    Input,
+    Output,
 }
 
 /// One of the two GPIO ports of the YM2149.
@@ -17,8 +25,8 @@ pub enum IoPort {
 /// IO port and mixer settings.
 ///
 /// Note: Whereas the YM2149 enables tone / noise generators when the register stores
-/// a value of 0 (false), I wrote the code in a way to seem more logical. The fields
-/// that take a `bool` argument instead enable a generator when its value is `true`.
+/// a value of 0 (false), I wrote the code in a way that, at least to me, seems more logical. The fields
+/// that take a `bool` argument enable a generator when its value is `true` instead of `false`.
 #[derive(Debug)]
 pub struct IoPortMixerSettings {
     pub gpio_port_a_mode: IoPortMode,
@@ -85,6 +93,7 @@ impl Default for IoPortMixerSettings {
 pub enum ChipMode {
     /// DA7~DA0 has high impedance.
     INACTIVE,
+    #[cfg(feature = "read")]
     /// DA7~DA0 set to output mode, and contents of register currently being addressed are output.
     ///
     /// ---
