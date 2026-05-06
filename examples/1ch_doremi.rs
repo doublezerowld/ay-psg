@@ -5,7 +5,11 @@
 use std::thread;
 use std::time::Duration;
 
-use ym2149_core::{audio::AudioChannel, io::IoPortMixerSettings, prelude::*};
+use ay_psg::{
+    audio::{AudioChannel, BuiltinEnvelopeShape, Envelope},
+    io::IoPortMixerSettings,
+    prelude::*,
+};
 
 struct DisplayWriter;
 impl CommandOutput for DisplayWriter {
@@ -21,7 +25,7 @@ const DOREMI: [f32; 8] = [
 
 fn main() {
     let out = DisplayWriter {};
-    let mut chip = YM2149::new(out, 2_000_000);
+    let mut chip = PSG::new(out, 2_000_000);
 
     chip.setup_io_and_mixer(IoPortMixerSettings {
         tone_ch_a: true,
@@ -31,7 +35,7 @@ fn main() {
     });
 
     chip.level(TEST_CHANNEL, 0xF).expect("Failed to set level");
-
+    chip.set_envelope_shape(&Envelope::Shape(BuiltinEnvelopeShape::Saw));
     loop {
         for f in DOREMI {
             chip.tone_hz(TEST_CHANNEL, f)

@@ -1,7 +1,10 @@
+// command.rs
+//! Provides the Command struct and the CommandOutput trait.
+
 use crate::register::{READABLE_REG_NAMES, RegisterIndex};
 use core::fmt::Display;
 
-/// A command contains a value to be written to a specific register of the YM2149.
+/// A command contains a value to be written to a specific register of the chip.
 #[derive(Debug, Clone, Copy)]
 pub struct Command {
     pub register: u8,
@@ -18,9 +21,9 @@ impl Command {
         }
     }
 
-    /// Returns self as an array containing two bytes, `[0]` for register, and `[1]` for value.
-    pub fn as_array(&self) -> [u8; 2] {
-        [self.register, self.value]
+    /// Returns self as a tuple (register-value pair) containing two bytes `0` for register, and `1` for value.
+    pub fn as_tuple(&self) -> (u8, u8) {
+        (self.register, self.value)
     }
 }
 
@@ -35,7 +38,7 @@ impl Display for Command {
 ///
 /// Example:
 /// ```rust
-/// use ym2149_core::command::{Command, CommandOutput};
+/// use ay_psg::command::{Command, CommandOutput};
 ///
 /// struct DebugWriter;
 ///

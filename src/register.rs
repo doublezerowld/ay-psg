@@ -1,4 +1,5 @@
-//! Registers
+//! registers.rs
+//!
 
 use core::fmt::Display;
 
@@ -21,7 +22,7 @@ pub const READABLE_REG_NAMES: [&'static str; 16] = [
     "Data of I/O port B",
 ];
 
-/// One of the 16 registers (0-15) of the YM2149 sound chip.
+/// One of the 16 registers (0-15) of an AY-3-8910.
 ///
 /// Used to select which register to write / read.
 /// Each register controls different aspects of tone generation, noise, mixing,
@@ -75,10 +76,10 @@ pub enum Register {
     /// **Example:**
     /// ```no_run
     /// // Enables only channel A, with IOA and IOB functioning as outputs.
-    /// use ym2149_core::{
+    /// use ay_psg::{
     ///     command::{Command, CommandOutput},
     ///     register::Register,
-    ///     chip::YM2149
+    ///     chip::PSG
     /// };
     ///
     /// struct DebugWriter;
@@ -90,7 +91,7 @@ pub enum Register {
     ///     }
     /// }
     ///
-    /// let mut chip = YM2149::new(
+    /// let mut chip = PSG::new(
     ///     DebugWriter{},
     ///     2_000_000,
     /// ).expect("Error building chip");

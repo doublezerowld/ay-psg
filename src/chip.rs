@@ -2,23 +2,25 @@
 use crate::audio::{AudioChannel, Envelope, EnvelopeFrequency};
 use crate::command::{Command, CommandOutput};
 use crate::errors::Error;
-use crate::io::{IoPort, IoPortMixerSettings};
+use crate::io::{IoPort, IoPortMixerSettings, Read, ReadDriver};
 #[cfg(feature = "notes")]
 use crate::notes::Note;
 use crate::register::{LEVEL_REGS, Register, RegisterIndex};
+
+use core::marker::PhantomData;
 
 // =========================================================
 // ====================== CHIP STRUCT ======================
 // =========================================================
 
-/// A YM2149 chip struct.
+/// A PSG chip struct.
 ///
 /// The master_clock_frequency value is used to convert a frequency into a tone period by .tone_hz()
 ///
 /// Example code:
 /// ```rust
-/// use ym2149_core::io::IoPortMixerSettings;
-/// use ym2149_core::{audio::AudioChannel, prelude::*};
+/// use ay_psg::io::IoPortMixerSettings;
+/// use ay_psg::{audio::AudioChannel, prelude::*};
 ///
 /// struct DisplayWriter;
 /// impl CommandOutput for DisplayWriter {
@@ -29,7 +31,7 @@ use crate::register::{LEVEL_REGS, Register, RegisterIndex};
 ///
 /// fn main() {
 ///     let out = DisplayWriter {};
-///     let mut chip = YM2149::new(out, 2_000_000);
+///     let mut chip = PSG::new(out, 2_000_000);
 ///
 ///     chip.setup_io_and_mixer(IoPortMixerSettings {
 ///         tone_ch_a: true,
@@ -41,30 +43,45 @@ use crate::register::{LEVEL_REGS, Register, RegisterIndex};
 /// }
 /// ```
 #[derive(Debug)]
-pub struct YM2149<C>
-where
-    C: CommandOutput,
-{
-    pub command_output: C,
+pub struct PSG<R, W> {
+    pub command_output: W,
+    pub read_driver: ReadDriver<R>,
     pub master_clock_frequency: u32,
 }
 
-impl<C> YM2149<C>
+impl<R, W> PSG<R, W>
 where
-    C: CommandOutput,
+    R: Read,
+    W: CommandOutput,
 {
-    /// Create a new struct for the YM2149.
+    #[cfg(not(feature = "read"))]
+    /// Create a new struct for the PSG.
     ///
     /// The datasheet specifies a master clock frequency range of 1-2MHz (2-4MHz with SEL low on YM2149 chips)
-    pub fn new(command_output: C, master_clock_frequency: u32) -> Self {
+    pub fn new(command_output: W, master_clock_frequency: u32) -> Self {
+        let read_driver = ReadDriver(PhantomData);
+
         Self {
             command_output,
+            read_driver: read_driver,
+            master_clock_frequency,
+        }
+    }
+
+    #[cfg(feature = "read")]
+    /// Create a new struct for the PSG.
+    ///
+    /// The datasheet specifies a master clock frequency range of 1-2MHz (2-4MHz with SEL low on YM2149 chips)
+    pub fn new(command_output: W, master_clock_frequency: u32, read_driver: ReadDriver<R>) -> Self {
+        Self {
+            command_output,
+            read_driver,
             master_clock_frequency,
         }
     }
 
     /// Send a [`command::Command`].
-    pub fn command<R: RegisterIndex>(&mut self, register: R, value: u8) {
+    pub fn command<RI: RegisterIndex>(&mut self, register: RI, value: u8) {
         self.command_output
             .execute(Command::new(register.address(), value));
     }
@@ -122,7 +139,7 @@ where
     ///
     /// ***Basic usage:***
     /// ```no_run
-    /// use ym2149_core::audio::AudioChannel;
+    /// use ay_psg::audio::AudioChannel;
     ///
     /// chip.tone_hz(AudioChannel::A, 440)?; // Ok::<(), crate::errors::Error>(())
     /// ```

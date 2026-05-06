@@ -1,7 +1,7 @@
 #[cfg(feature = "read")]
 use core::error::Error;
 
-/// YM2149-specific errors related to invalid parameters and chip state.
+/// PSG-related errors related to invalid parameters and chip state.
 #[derive(Debug)]
 pub enum Error {
     InvalidClockFrequency(u32),

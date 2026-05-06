@@ -1,15 +1,15 @@
 [package]
-name = "ym2149-core"
-version = "0.1.0"
+name = "ay-psg"
+version = "0.2.0"
 edition = "2024"
-authors = ["vw.dvw <jaba7012@proton.me>"]
+authors = ["doublezerowld <jaba7012@proton.me>"]
 license = "MIT OR Apache-2.0"
 readme-file = "README.md"
 
-description = "Generic driver for YM2149 sound chips"
-repository = "https://github.com/OrdinarySoftwareDev/ym2149-core-rs"
-keywords = ["ym2149", "audio", "chiptune", "psg", "hal"]
-categories = ["embedded", "hardware-support", "multimedia::audio", "no-std::no-alloc"]
+description = "A platform-agnostic, no_std generic driver for the AY-3-8910 family of 3‑voice PSG sound chips."
+repository = "https://github.com/doublezerowld/ay-psg"
+keywords = ["ay-3-8910", "ym2149", "chiptune", "psg", "hal"]
+categories = ["embedded", "hardware-support", "no-std::no-alloc"]
 
 [features]
 notes = []

@@ -44,7 +44,7 @@ impl From<BaseNote> for f32 {
 ///
 /// Example code:
 /// ```no_run
-/// use ym2149_core::audio::{Note, BaseNote};
+/// use ay_psg::audio::{Note, BaseNote};
 ///
 /// let a_4 = Note::new(
 ///     BaseNote::A,

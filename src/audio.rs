@@ -1,6 +1,6 @@
 use crate::errors::Error;
 
-/// One of the YM2149's 3 audio channels. This enum is used by code that requires any audio-related operations.
+/// One of the 3 audio channels available on PSG chips supported by the crate. This enum is used by code that requires any audio-related operations.
 ///
 /// # Basic usage
 ///
@@ -37,11 +37,16 @@ impl AudioChannel {
 /// ---
 ///
 /// ```no_run
-/// use ym2149-core::audio::AudioChannel;
+/// use ay_psg::{
+///     audio::{BuiltinEnvelopeShape, Envelope},
+///     prelude::*
+/// };
 ///
-/// chip.set(AudioChannel::A, 110)?;
-/// chip.tone_hz(AudioChannel::B, 220)?;
-/// chip.tone_hz(AudioChannel::C, 440)?;
+/// let chip = PSG::new(_, _); // Replace with command output & clock
+///
+/// chip.set_envelope_shape(&Envelope::Shape(BuiltinEnvelopeShape::Saw));
+/// chip.set_envelope_shape(&Envelope::Shape(BuiltinEnvelopeShape::Saw));
+/// chip.set_envelope_shape(&Envelope::Shape(BuiltinEnvelopeShape::Saw));
 /// ```
 #[derive(Debug, Clone, Copy)]
 pub enum Envelope {
