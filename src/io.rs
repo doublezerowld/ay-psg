@@ -130,7 +130,7 @@ impl From<ChipMode> for ChipModePinStates {
         Self {
             bc1: i & 1 == 1,
             bc2: true,
-            bdir: i & 2 == 1,
+            bdir: i & 2 == 2,
         }
     }
 }
