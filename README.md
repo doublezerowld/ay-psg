@@ -38,7 +38,7 @@ This code should be backwards-compatible with other PSG sound chips based on the
 | Envelope                | ➖         |           |                 |                 |           |         |         |        |            |
 | Mixer                   | ➖         |           |                 |                 |           |         |         |        |            |
 
-> [!WARNING] Notes
+> [!NOTE]
 > 1. The AY-3-8912 doesn't expose I/O port B. Read-back test only applies to port A.
 > 2. The AY-3-8913 doesn't expose any I/O ports at all. Read-back test doesn't apply.
 
