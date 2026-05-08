@@ -23,9 +23,16 @@ const DOREMI: [f32; 8] = [
     261.63, 293.66, 329.63, 349.23, 392.00, 440.00, 493.88, 523.26,
 ];
 
+struct NullDriver;
+impl Read for NullDriver {
+    fn read<R: ay_psg::register::RegisterIndex>(&self, _: R) -> Result<u8, ay_psg::errors::Error> {
+        Ok(0)
+    }
+}
+
 fn main() {
     let out = DisplayWriter {};
-    let mut chip = PSG::new(out, 2_000_000);
+    let mut chip = PSG::new(out, 2_000_000, ReadDriver(NullDriver {}));
 
     chip.setup_io_and_mixer(IoPortMixerSettings {
         tone_ch_a: true,
@@ -35,7 +42,7 @@ fn main() {
     });
 
     chip.level(TEST_CHANNEL, 0xF).expect("Failed to set level");
-    chip.set_envelope_shape(&Envelope::Shape(BuiltinEnvelopeShape::Saw));
+    chip.set_envelope_shape(Envelope::Shape(BuiltinEnvelopeShape::Saw));
     loop {
         for f in DOREMI {
             chip.tone_hz(TEST_CHANNEL, f)
