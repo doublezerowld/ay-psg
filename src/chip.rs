@@ -3,11 +3,11 @@ use crate::audio::{AudioChannel, Envelope, EnvelopeFrequency};
 use crate::command::{Command, CommandOutput};
 use crate::errors::Error;
 use crate::io::{IoPort, IoPortMixerSettings, Read, ReadDriver};
-#[cfg(feature = "notes")]
-use crate::notes::Note;
+
 use crate::register::{LEVEL_REGS, Register, RegisterIndex};
 
-use core::marker::PhantomData;
+#[cfg(feature = "notes")]
+use crate::notes::Note;
 
 // =========================================================
 // ====================== CHIP STRUCT ======================
@@ -49,26 +49,12 @@ pub struct PSG<R, W> {
     pub master_clock_frequency: u32,
 }
 
+#[cfg(feature = "read")]
 impl<R, W> PSG<R, W>
 where
     R: Read,
     W: CommandOutput,
 {
-    #[cfg(not(feature = "read"))]
-    /// Create a new struct for the PSG.
-    ///
-    /// The datasheet specifies a master clock frequency range of 1-2MHz (2-4MHz with SEL low on YM2149 chips)
-    pub fn new(command_output: W, master_clock_frequency: u32) -> Self {
-        let read_driver = ReadDriver(PhantomData);
-
-        Self {
-            command_output,
-            read_driver: read_driver,
-            master_clock_frequency,
-        }
-    }
-
-    #[cfg(feature = "read")]
     /// Create a new struct for the PSG.
     ///
     /// The datasheet specifies a master clock frequency range of 1-2MHz (2-4MHz with SEL low on YM2149 chips)
@@ -79,7 +65,34 @@ where
             master_clock_frequency,
         }
     }
+}
 
+#[cfg(not(feature = "read"))]
+pub struct NoRead;
+
+#[cfg(not(feature = "read"))]
+impl<W> PSG<NoRead, W>
+where
+    W: CommandOutput,
+{
+    /// Create a new struct for the PSG.
+    ///
+    /// The datasheet specifies a master clock frequency range of 1-2MHz (2-4MHz with SEL low on YM2149 chips)
+    pub fn new(command_output: W, master_clock_frequency: u32) -> Self {
+        let read_driver = ReadDriver(PhantomData);
+
+        Self {
+            command_output,
+            read_driver,
+            master_clock_frequency,
+        }
+    }
+}
+
+impl<R, W> PSG<R, W>
+where
+    W: CommandOutput,
+{
     /// Send a [`command::Command`].
     pub fn command<RI: RegisterIndex>(&mut self, register: RI, value: u8) {
         self.command_output
@@ -111,11 +124,11 @@ where
     }
 
     /// Set the envelope generator's shape from an [`Envelope`].
-    pub fn set_envelope_shape(&mut self, envelope: &Envelope) {
+    pub fn set_envelope_shape(&mut self, envelope: Envelope) {
         self.command(Register::EShape, envelope.into());
     }
 
-    /// Play a tone with a TP of `period` on an [`AudioChannel`].
+    /// Play a tone with a `TP` of `period` on an [`AudioChannel`].
     ///
     /// The formula for the frequency is
     /// ``f = f_Master / (16 * TP)``, where:
@@ -147,7 +160,7 @@ where
         match frequency {
             // safety checks
             0.0 => Err(Error::DivisionByZero),
-            ..0.0 => Err(Error::FrequencyOutOfRange(frequency)),
+            ..0.0 => Err(Error::ToneFrequencyOutOfRange(frequency)),
             _ => {
                 // for valid frequencies
                 let tp: f32 = self.master_clock_frequency as f32 / (16.0 * frequency);
@@ -179,21 +192,40 @@ where
         Ok(())
     }
 
-    /// Set the frequency of the noise generator.
+    /// Set the period `NP` of the noise generator.
     ///
     /// Mask: 0x1F
-    pub fn set_noise_freq(&mut self, frequency: u8) -> Result<(), Error> {
-        if frequency <= 0x1F {
-            self.command(Register::NoiseFreq5bit, frequency);
+    pub fn noise(&mut self, period: u8) -> Result<(), Error> {
+        if (0..=0x1F_u8).contains(&period) {
+            self.command(Register::NoiseFreq5bit, period);
             Ok(())
         } else {
-            Err(Error::NoiseFrequencyOutOfRange(frequency))
+            Err(Error::NoisePeriodOutOfRange(period))
+        }
+    }
+
+    /// Set the frequency of the noise generator `fN`.
+    /// Returns the period in a `Result<u8, ay_psg::errors:Error>`.
+    pub fn noise_hz(&mut self, frequency: f32) -> Result<u8, Error> {
+        if frequency != 0.0 {
+            let period = self.master_clock_frequency as f32 / (16.0 * frequency);
+
+            match period {
+                32.0.. => Err(Error::NoiseFrequencyOutOfRange(frequency)),
+                _ => {
+                    self.command(Register::NoiseFreq5bit, period as u8);
+                    Ok(period as u8)
+                }
+            }
+        } else {
+            Ok(0u8)
         }
     }
 
     /// Set the volume of an [AudioChannel](#AudioChannel).
     ///
-    /// **Note:** The channel level registers store 5 bits of data per channel.
+    /// **Note:** The channel level registers store 5 bits of data per channel, of which the most significant bit controls
+    /// whether the level is controlled by the envelope generator.
     ///
     /// ---
     ///
@@ -214,13 +246,26 @@ where
         }
     }
 
+    /// Writes 0 to all registers of the PSG.
+    pub fn manual_reset(&mut self) {
+        for r in 0..=15 {
+            self.command(r, 0);
+        }
+    }
+}
+
+#[cfg(feature = "read")]
+impl<R, W> PSG<R, W>
+where
+    R: Read,
+    W: CommandOutput,
+{
     // ============================================================
     // ========================= THE VOID =========================
     // ============================================================
     // (All you'll find here is unimplemented / todo functionality)
 
     #[allow(unused)]
-    #[cfg(feature = "read")]
     /// Reads a value from a given register and outputs it to the data bus.
     ///
     /// ---
@@ -232,12 +277,11 @@ where
     /// This method is **unimplemented** *(at least, not for now...)*
     ///
     /// Feel free to try implementing it yourself, at your own risk.
-    fn read(&self, register: Register) -> u8 {
-        unimplemented!("Mode::READ and any functions associated with it are not yet usable.");
+    pub fn read<RI: RegisterIndex>(&self, register: RI) -> Result<u8, Error> {
+        self.read_driver.0.read(register)
     }
 
     #[allow(unused)]
-    #[cfg(feature = "read")]
     /// Reads a value from a given I/O port and outputs it to the data bus.
     ///
     /// ---
