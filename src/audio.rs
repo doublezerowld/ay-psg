@@ -1,5 +1,8 @@
 use crate::errors::Error;
 
+/// Reference pitch of A=440.0Hz.
+pub const REFERENCE_PITCH: f32 = 440.0;
+
 /// One of the 3 audio channels available on PSG chips supported by the crate. This enum is used by code that requires any audio-related operations.
 ///
 /// # Basic usage
@@ -24,13 +27,35 @@ pub enum AudioChannel {
     C,
 }
 
+pub const AUDIO_CHANNELS: [AudioChannel; 3] = [AudioChannel::A, AudioChannel::B, AudioChannel::C];
+
 impl AudioChannel {
     pub fn index(&self) -> usize {
         self.clone() as usize
     }
 }
 
-/// This enum covers all envelope shapes.
+/// Output level configuration for an audio channel.
+///
+/// Used by [`level`](crate::chip::PSG::level) to select either:
+/// - a fixed output level (`0..=15`)
+/// - envelope-controlled output
+#[derive(Debug, Clone, Copy)]
+pub enum Level {
+    Fixed(u8),
+    EnvelopeControlled,
+}
+
+impl Level {
+    pub fn as_register_value(self) -> Result<u8, Error> {
+        match self.clone() {
+            Self::Fixed(n) => (n <= 0xF).then_some(n).ok_or(Error::LevelOutOfRange(n)),
+            Self::EnvelopeControlled => Ok(0x10),
+        }
+    }
+}
+
+/// This enum covers all envelope types.
 ///
 /// # Basic usage
 ///
@@ -71,14 +96,14 @@ pub enum Envelope {
     Raw(u8),
 }
 
-impl From<&Envelope> for u8 {
-    fn from(value: &Envelope) -> Self {
+impl From<Envelope> for u8 {
+    fn from(value: Envelope) -> Self {
         use Envelope::*; // for this scope only
 
         match value {
-            Shape(builtin) => *builtin as u8,
-            InvertedShape(builtin) => (*builtin as u8) ^ (0b0100),
-            Raw(n) => *n,
+            Shape(builtin) => builtin as u8,
+            InvertedShape(builtin) => (builtin as u8) ^ (0b0100),
+            Raw(byte) => byte,
         }
     }
 }
@@ -101,15 +126,23 @@ pub enum BuiltinEnvelopeShape {
     Triangle = 0b1110,
 }
 
+pub const ENVELOPE_SHAPES: [BuiltinEnvelopeShape; 5] = [
+    BuiltinEnvelopeShape::FadeOut,
+    BuiltinEnvelopeShape::FadeIn,
+    BuiltinEnvelopeShape::Tooth,
+    BuiltinEnvelopeShape::Saw,
+    BuiltinEnvelopeShape::Triangle,
+];
+
 /// A helper enum for setting the envelope repetition frequency (f_e).
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum EnvelopeFrequency {
     /// Frequency in Hertz
     Hertz(u16),
     /// Frequency in beats per minute
     BeatsPerMinute(u16),
     /// Raw envelope frequncy value to be written to the chip
-    Integer(u16),
+    Raw(u16),
 }
 
 impl EnvelopeFrequency {
@@ -127,11 +160,11 @@ impl EnvelopeFrequency {
             }
             Self::BeatsPerMinute(bpm) => {
                 let hz = Self::Hertz(bpm).as_ep(clock_frequency)?;
-                (60 * hz)
+                (60 * hz) // multiplying the period by 60 LOWERS the frequency, don't get confused by this
                     .try_into()
                     .map_err(|_| Error::TonePeriodOutOfRange(0))
             }
-            Self::Integer(x) => Ok(x),
+            Self::Raw(x) => Ok(x),
         }
     }
 }
