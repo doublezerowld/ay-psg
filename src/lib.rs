@@ -32,6 +32,8 @@ pub mod errors;
 pub mod io;
 pub mod notes;
 pub mod prelude {
+    #[cfg(feature = "read")]
+    pub use crate::io::{Read, ReadDriver};
     pub use crate::{
         chip::PSG,
         command::{Command, CommandOutput},
