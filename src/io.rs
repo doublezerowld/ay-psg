@@ -1,15 +1,15 @@
 //! Elements critical for I/O operations to the chip.
-use crate::{errors::Error, register::RegisterIndex};
-use core::marker::PhantomData;
+use crate::{audio::AudioChannel, errors::Error, register::RegisterIndex};
 
 /// The Read trait is used for reading register values from the PSG.
 pub trait Read {
-    fn read<R: RegisterIndex>(register: R) -> Result<u8, Error>;
+    fn read<R: RegisterIndex>(&self, register: R) -> Result<u8, Error>;
 }
 
 #[derive(Debug)]
 #[cfg(feature = "read")]
 pub struct ReadDriver<R>(pub R);
+
 #[derive(Debug)]
 #[cfg(not(feature = "read"))]
 pub struct ReadDriver<R>(pub PhantomData<R>);
@@ -37,8 +37,8 @@ pub enum IoPort {
 /// that take a `bool` argument enable a generator when its value is `true` instead of `false`.
 #[derive(Debug, Clone, Copy)]
 pub struct IoPortMixerSettings {
-    pub gpio_port_a_mode: IoPortMode,
-    pub gpio_port_b_mode: IoPortMode,
+    pub io_port_a_mode: IoPortMode,
+    pub io_port_b_mode: IoPortMode,
     pub noise_ch_c: bool,
     pub noise_ch_b: bool,
     pub noise_ch_a: bool,
@@ -51,8 +51,8 @@ impl IoPortMixerSettings {
     /// Returns a byte containing the settings that can be written directly to register 7.
     pub fn as_u8(self) -> u8 {
         let self_array = [
-            self.gpio_port_a_mode as u8 == 0,
-            self.gpio_port_b_mode as u8 == 0,
+            self.io_port_a_mode as u8 == 0,
+            self.io_port_b_mode as u8 == 0,
             self.noise_ch_c,
             self.noise_ch_b,
             self.noise_ch_a,
@@ -69,13 +69,39 @@ impl IoPortMixerSettings {
 
         byte
     }
+
+    pub fn channel_setup(&mut self, channel: AudioChannel, tone: bool, noise: bool) -> Self {
+        match channel {
+            AudioChannel::A => {
+                self.noise_ch_a = noise;
+                self.tone_ch_a = tone;
+            }
+            AudioChannel::B => {
+                self.noise_ch_b = noise;
+                self.tone_ch_b = tone;
+            }
+            AudioChannel::C => {
+                self.noise_ch_c = noise;
+                self.tone_ch_c = tone;
+            }
+        }
+        self.clone()
+    }
+
+    pub fn io_port_mode(&mut self, port: IoPort, mode: IoPortMode) -> Self {
+        match port {
+            IoPort::A => self.io_port_a_mode = mode,
+            IoPort::B => self.io_port_b_mode = mode,
+        };
+        self.clone()
+    }
 }
 
 impl Default for IoPortMixerSettings {
     fn default() -> Self {
         IoPortMixerSettings {
-            gpio_port_a_mode: IoPortMode::Output,
-            gpio_port_b_mode: IoPortMode::Output,
+            io_port_a_mode: IoPortMode::Output,
+            io_port_b_mode: IoPortMode::Output,
             noise_ch_c: false,
             noise_ch_b: false,
             noise_ch_a: false,
