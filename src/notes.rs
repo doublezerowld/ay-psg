@@ -1,9 +1,9 @@
+use core::fmt::Display;
+
+use crate::audio::REFERENCE_PITCH;
 use crate::errors::Error;
+
 use libm::powf;
-
-/// Reference pitch of A=440.0Hz.
-const REFERENCE_PITCH: f32 = 440.0;
-
 /// An accidental, represented by an i8 value that corresponds to the offset in quarter tones.
 #[repr(i8)]
 #[derive(Debug, Clone, Copy)]
@@ -96,5 +96,12 @@ impl Note {
             + self.offset;
 
         REFERENCE_PITCH * powf(2.0, distance_a4 / 12.0)
+    }
+}
+
+impl Display for Note {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "C")?;
+        Ok(())
     }
 }
